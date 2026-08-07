@@ -1,7 +1,7 @@
 ---
 name: lark-base
 version: 1.2.6
-description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限；遇到 Base/多维表格/bitable、BaseApp/AppMode，或应用模式的 /app/ 链接（可能同时包含 /base/workspace/<workspace_token>）时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
+description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限、多维表格模板中心（浏览/搜索多维表格模板并基于模板创建 Base）；遇到 Base/多维表格/bitable、BaseApp/AppMode，或应用模式的 /app/ 链接（可能同时包含 /base/workspace/<workspace_token>）时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -20,6 +20,7 @@ metadata:
 - 用户要管理 Base 表单、仪表盘、workflow、高级权限或角色。
 - 用户要用应用模式（BaseApp）：新建应用、管理应用页面、在页面上加图表/列表/富文本组件，或整理 Workspace 目录。
 - 用户明确提到 BaseApp / AppMode / 应用模式 / Workspace 内应用，或给出应用模式的 `/app/` 链接（链接可能同时携带 `/base/workspace/<workspace_token>` 路径信息），并要查询页面或组件；这类应用属于 Base，不走 `lark-apps`。
+- 用户要查找模板中心里的 Base 模板，并基于模板复制创建新的 Base。
 - 用户要把旧 Base 聚合式命令或旧写法迁移到当前 `lark-cli base +...` shortcut。
 
 不要使用本 skill：
@@ -55,6 +56,10 @@ metadata:
 - 用户要查询既有 BaseApp，但当前输入和当前会话可信命令返回中都没有真实 `/app/` 链接或 `app_token`，也没有可供 `+workspace-entity-list --type baseapp` 定位的 `workspace_token`，且用户未明确要求读取含这些标识的当前文件：无需调用任何工具；先明确说明当前任务没有提供应用链接或 Workspace 信息、无法可靠定位目标 BaseApp，再请用户补充并停止。不要在此前后调用 `lark-apps`、`+title-resolve`、Drive 搜索、浏览器或其他全局名称发现，不要默认选择同名候选，也不要把 `base_token` 当作 `app_token`。
 - Base/Wiki URL 的 `table=` query 参数实际表示当前选中的顶层 block，可能是数据表、仪表盘或 workflow；不要按参数名自行当成 `table_id`。以 `+url-resolve` 返回的 `block_type` 以及 `table_id` / `dashboard_id` / `workflow_id` 为准；`selection_source=url_query` 只说明 URL 当前选中了该 block，不代表它覆盖用户明确点名的目标。若用户点名的 dashboard 与 `block_name` 不一致，先用 `+dashboard-list` 按名称匹配；若只返回中性 `block_id`，按 hint 用 `+base-block-list` 确认类型。
 - 用户输入 Base 标题、关键词或不确定名称：先运行 `lark-cli base +title-resolve --title "<keyword>" --as user`；`--title` 传入标题中的短关键词，不超过 30 个字符；过长标题先取最有区分度的短关键词；多候选时先让用户消歧，不要猜。
+- 用户要列出已有 Base 候选，且需要按最近访问、owner、创建人、时间、类型等维度筛选/排序时：转 `lark-cli drive +search --doc-types bitable --as user`。按标题/关键词定位单个 Base 仍优先用上一条 `+title-resolve`。常见场景：
+  - 最近访问：`lark-cli drive +search --doc-types bitable --sort open_time --opened-since 3m --page-size 20 --as user`
+  - 只列我拥有的：加 `--mine`；如果要列“我创建的”，用 `--created-by-me`。
+  - 从候选项拿到 URL 或 token 后，再用 `+url-resolve` 或 `+base-get` 进入 Base 业务命令。
 - 文档嵌入 Base 标签：直接读取 `<bitable>` / `<base_refer>` 的 `token` 作为 `--base-token`，`table-id` 作为 `--table-id`，`view-id` 作为 `--view-id`；孤立 raw token 不走 `+url-resolve`。
 - 仍无法定位且用户不是要新建 Base 时，先反问用户要操作哪一个 Base；用户要新建时才用 `+base-create`。
 
@@ -63,7 +68,9 @@ metadata:
 | 用户目标 | 优先命令 | 何时读 reference |
 |---|---|---|
 | 查 Base 本体 | `+base-get` | 用返回确认 Base 名称、owner、权限和可继续操作的 token |
+| 列出已有 Base 候选 | 转 `lark-cli drive +search --doc-types bitable` | 需要按最近访问、owner、创建人、时间、名称等条件筛选/排序 Base 列表时使用；按短标题/关键词解析单个 Base 仍用 `+title-resolve` |
 | 创建/复制 Base | `+base-create` / `+base-copy` | 新建时强烈推荐用 `--table-name` + `--fields` 同时配置新 Base 里唯一一个初始数据表的 name 和 schema；写入后报告新 Base 标识和 `permission_grant` |
+| 查找模板中心模板 | `+template-categories` / `+template-list` / `+template-search` | 用户有创建新 Base 的意图且没有“我的/最近访问/已有对象”锚点时使用；先读 [lark-base-template-center.md](references/lark-base-template-center.md)。返回的 `templates[].token` 是模板 Base token，基于模板创建时接 `+base-copy --base-token <token>` |
 | Base 文件导入/导出 | 转 `lark-drive` | 文件格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责；在线复制走 `+base-copy` |
 | 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系和 fewshot 看 `--help` |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
@@ -81,8 +88,8 @@ metadata:
 | 公式字段 | `+field-create/update --json '{"type":"formula",...}'` | 必读 [formula-field-guide.md](references/formula-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
 | Lookup 字段 | `+field-create/update --json '{"type":"lookup",...}'` | 必读 [lookup-field-guide.md](references/lookup-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
 | 表单提交 | `+form-submit` | 先读 [lark-base-form-detail.md](references/lark-base-form-detail.md) 获取题目、filter 和附件所需 `base_token`；提交 JSON 读 [lark-base-form-submit.md](references/lark-base-form-submit.md) |
-| 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | Base 内表单按 table 管理；先确定并复用真实 `table_id`。读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)；题目显隐条件 `visible_rule` 结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md) |
-| Base 内表单管理 | `+form-list/get/create/update/delete` / `+form-questions-list/delete` | 缺少或不确定归属时，先用 `+table-list` 或 `+base-block-list` 取得真实 `table_id`；这些命令使用 `--base-token + --table-id` 并在整个工作流中复用同一 `table_id`，删除前确认目标表单 |
+| 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | Base 内表单按 table 管理；先确定并复用真实 `table_id`。读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)；已有字段加回表单用 `use_existing_field:true`；题目显隐条件 `visible_rule` 结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md) |
+| Base 内表单管理 | `+form-list/get/create/update/delete` / `+form-questions-list/delete` | 缺少或不确定归属时，先用 `+table-list` 或 `+base-block-list` 取得真实 `table_id`；这些命令使用 `--base-token + --table-id` 并在整个工作流中复用同一 `table_id`；删除题目前用 `+form-questions-list` 确认题目 ID，并按 `+form-questions-delete --help` 判断是否要 `--keep-field` |
 | 分享表单详情 | `+form-detail --share-token <share_token>` | 使用表单分享链接里的 `share_token`；提交前读 [lark-base-form-detail.md](references/lark-base-form-detail.md) |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取一个或多个图表计算结果用 `+dashboard-block-get-data`；读取完整仪表盘时按 block 类型分流，文本和不支持直接取数的图表按 reference 恢复 |
 | 查询 BaseApp 与关联 Base | `+url-resolve` → `+app-get` → `+base-get` | 只把 `/app/` URL 传给 `+url-resolve`，不要把 `/base/workspace/` URL 传给它；用 `+app-get ref` 的 key 作为 `base_token` 再调用 `+base-get`。最终答复忠实保留应用 `name` / `app_token`，以及每个关联 Base 的 `name` / `base_token` |
@@ -100,6 +107,10 @@ metadata:
 - 新建 Base 时，强烈推荐一次性执行 `lark-cli base +base-create --name "<base>" --table-name "<table>" --fields '<field-json-array>'`，同时配置新 Base 里唯一一个初始数据表的 name 和 schema；使用 `--fields` 前先读 [lark-base-field-json.md](references/lark-base-field-json.md) 或复用 `+field-create` 的字段 JSON 形状，不要猜字段属性。
 - `+base-create` 不传 `--table-name` 和 `--fields` 时，会创建一个默认 schema 的初始数据表。
 - `+table-copy` 用于在线复制 Base 内的数据表，`--table-id` 可使用当前 Base 中的表 ID 或表名；复制范围等参数查看 `--help`。
+- 模板中心是公开模板数据集，不是用户云空间里的已有 Base。用户要“找一个可用模板/按类目浏览模板/根据关键词搜模板”时用 `+template-*`；用户要“我的模板/最近访问/已有 Base”时不要走模板中心，回到 URL、标题或已有 Base 列表路径。
+- `drive +search --doc-types bitable` 列的是用户可访问的云空间/Wiki Base 文件候选，不是 Base 内记录，也不是模板中心。它适合带筛选/排序地列出候选 Base；真正读表、查记录、改字段前仍要先解析或确认 `base_token`、`table_id` 等真实 ID。
+- 模板对象的唯一标识是 `token`，表示模板 Base token。不要把模板 token 改名为 `id` 或 `key`；分类才使用 `category_key`。
+- `+table-copy` 的安全默认值是只复制表结构；用户没有明确要求记录时省略 `--range`，明确要求包含记录时才传 `--range all`。`--table-id` 可直接使用当前 Base 中的表 ID 或表名。
 - 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
 - `formula` 适合常规计算、条件判断、文本/日期处理和长期派生指标；`lookup` 适合明确的跨表查找、筛选后取值或聚合引用。
 - 写入、公式、lookup、workflow、dashboard 前，先读取真实结构：表、字段、视图、关联表和 dashboard block 名称都以命令返回为准。
@@ -129,7 +140,7 @@ metadata:
 
 - Base 内表单 list/get/create/update/delete 和题目管理都属于具体数据表：第一个管理命令前必须已有归属明确的真实 `table_id`；缺失或归属不明确时才用 `+table-list` 或 `+base-block-list` 定位，已有真实 ID 时直接复用。后续管理命令始终传同一 `base_token + table_id`。
 - 表单问题由数据表字段承载，question `id` 就是 `field_id`。创建问题前先 `+form-questions-list`；除非用户明确要求同名的独立问题，否则标题已存在时优先用 `+form-questions-update` 修改必填状态、标题或描述，不要先创建同名问题再删除旧问题。
-- `+form-questions-delete` 用于删除非主字段问题；主字段问题使用 `+form-questions-update` 修改。
+- `+form-questions-delete` 默认会删除承载问题的数据表字段及记录数据；只想从表单移除题目并保留字段时必须传 `--keep-field`。保留字段后可用 `+form-questions-create --questions '[{"use_existing_field":true,"field_id":"<field_id>"}]'` 加回表单。
 - `+form-submit` 是高风险写操作，必须带 `--yes` 确认；调用前必须先跑 `+form-detail`，读取 `questions[].type`、`required`、`filter` 和附件场景需要的 `base_token`；不要填写被 filter 隐藏的问题。
 - `+form-questions-update` 是题目配置全量覆盖，不是 patch；未传字段会回落默认值，传空字符串 / `null` / 空数组会直接写入空或清空。更新前先 `+form-questions-list` 读取当前题目，把要保留的 `title` / `description` / `required` / `option_display_mode` / `visible_rule` 等字段带回请求。
 - 表单附件不要写进 `fields`，放在 `--json.attachments`；提交附件时必须同时传表单所属 Base 的 `--base-token`。
@@ -185,3 +196,4 @@ metadata:
 - [lark-base-app.md](references/lark-base-app.md) / [lark-base-app-block-data-config.md](references/lark-base-app-block-data-config.md)：应用模式（Workspace / 应用 / 页面 / 组件）入口与组件配置 SSOT
 - [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) / [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)：workflow 入口与 steps JSON SSOT
 - [lark-base-role-guide.md](references/lark-base-role-guide.md) / [role-config.md](references/role-config.md)：角色入口与权限 JSON SSOT
+- [lark-base-template-center.md](references/lark-base-template-center.md)：模板中心分类、列表、搜索和基于模板复制创建多维表格的完整流程
